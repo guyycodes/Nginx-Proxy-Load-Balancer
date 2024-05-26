@@ -27,9 +27,12 @@ To get started with the NGINX proxy and load balancer configuration, follow thes
    sudo apt-get -y install nginx-full
 ```
 
-2. Create a configuration in /etc/nginx/sites-available/ directory:
+2. Create a configuration for logging:
 
 ```bash
+   // create the file for your server configurations
+   sudo touch /etc/nginx/sites-available/medium_proxy.conf
+
    // create a file for logging
    sudo touch /var/log/nginx/proxy_access.log
 
@@ -41,13 +44,13 @@ To get started with the NGINX proxy and load balancer configuration, follow thes
 
    // This setup rotates the log daily, keeps 14 days of logs, compresses old versions, and ensures proper permissions and ownership are maintained. It also sends the USR1 signal to NGINX to reopen log files after rotation.
     /var/log/nginx/proxy_access.log {
-            daily                # Rotate the log daily
-            rotate 10            # Keep 10 days of backlogs
-            missingok            # It's okay if the log file is missing
-            notifempty           # Do not rotate the log if it is empty
-            compress             # Compress (gzip) log files on rotation
-            delaycompress        # Delay compression until the next rotation cycle
-            create 0640 www-data www-data # Create new log files with set permissions
+            daily                
+            rotate 10            
+            missingok            
+            notifempty           
+            compress             
+            delaycompress        
+            create 0640 www-data www-data 
             sharedscripts
             postrotate
                 if [ -f /var/run/nginx.pid ]; then
@@ -56,45 +59,71 @@ To get started with the NGINX proxy and load balancer configuration, follow thes
             endscript
     }
 
-   // test the cofiguration
-   sudo logrotate -d /etc/logrotate.d/proxy_access
-
-   // create the file for your server configurations
-   sudo touch /etc/nginx/sites-available/medium_proxy.conf
-
-   // then open and edit 
+   // now open and edit 
    sudo nano /etc/nginx/sites-available/medium_proxy.conf
+
 ```
 
-3. Input your configuration:
+3. Input your configuration in /etc/nginx/sites-available/medium_proxy.conf:
 
 ```bash
 server {
-    listen 80; # or any other port you prefer
+    listen 443 ssl;
+    server_name testProxy;
 
-    # Specify the custom access log for this proxy
+    error_log /var/log/nginx/error.log debug;
+
+    ssl_certificate /etc/ssl/certs/testProxy.crt;
+    ssl_certificate_key /etc/ssl/private/testProxy.key;
+
     access_log /var/log/nginx/proxy_access.log;
 
-    location /medium-proxy/ {
-        if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' '*';
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,>
-            add_header 'Access-Control-Max-Age' 3600;
-            add_header 'Content-Type' 'text/plain; charset=utf-8';
-            add_header 'Content-Length' 0;
-            return 204;  # Respond with status 204 No Content for OPTIONS requests
-        }
+    ssl_protocols TLSv1.2 TLSv1.3;  # Ensure using TLS protocols that are broadly compatible
+    ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5:!RC4';
+    ssl_session_tickets off;  # Disable session tickets for improved security
 
-        # Ensure that the proxy_pass URL is correct
-        proxy_pass https://medium.com/feed/Guyycodes;  # Correct URL for the Medium feed
-        proxy_set_header Host $host;
+    location /medium-proxy/ {
+        proxy_pass https://medium.com/feed/@guyycodes;
+        proxy_set_header Host medium.com;
+        proxy_set_header User-Agent $http_user_agent;  # Forward the User-Agent from the original request
+        proxy_set_header Accept $http_accept;  # Forward the Accept header from the original request
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        add_header 'Access-Control-Allow-Origin' '*' always;  # Add CORS header for non-OPTIONS requests
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_ssl_server_name on;  # Ensure proper SSL certificate verification by setting the server name for SSL handshake
+        # Managing connections:
+        proxy_http_version 1.1;  # Use HTTP/1.1 which is necessary for proper keep-alive functionality
+        proxy_set_header Connection "";  # This is necessary to drop the Connection header when passing to the upstream to avoid issues with keep-alive
+
+        proxy_ssl_verify off;  # Disable SSL verification for self-signed certificates
+
+        proxy_cache_bypass $http_upgrade;  # Ensures that WebSocket upgrades are not cached
+        proxy_cache_valid 200 302 10m;  # Cache valid responses
+        proxy_cache_valid 404 1m;  # Cache 404 responses for a minute (adjust as needed)
+
+        add_header X-Frame-Options SAMEORIGIN;
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Strict-Transport-Security "max-age=15552000; includeSubDomains; preload";  # This enforces SSL/TLS connections
     }
 }
+
+
+// create a self signed certificate
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/testProxy.key -out /etc/ssl/certs/testProxy.crt
+
+
+// then open up..
+   sudo nano /etc/nginx/nginx.conf
+
+// and add under the http basic settings: 
+    log_format basic '$remote_addr - $remote_user [$time_local] '
+                     '"$request" $status $body_bytes_sent '
+                     '"$http_referer" "$http_user_agent" '
+                     '$request_time';  # Time to process the request
+
 ```
 4) Test the configuration: 
 ```bash
@@ -103,18 +132,23 @@ sudo nginx -t
 // if the test is succesfull, then create a symbolic link
 sudo ln -s /etc/nginx/sites-available/medium_proxy.conf /etc/nginx/sites-enabled/
 
+// test the logging cofiguration
+sudo logrotate -d /etc/logrotate.d/nginx_proxy
+
 // test the symbolic link
 ls -l /etc/nginx/sites-enabled/
 
 // reload nginx and restart 
 sudo systemctl reload nginx
-sudo systemctl restart nginx
+sudo systemctl start nginx
 
 // monitor the log file
 tail -f /var/log/nginx/proxy_access.log
 
 // test
-curl -i http://your-server-ip/medium-proxy/
+curl -i -v -H "Host: testProxy.com" http://<server ip addr>/medium-proxy/
+
+
 
 ```
 
@@ -131,18 +165,23 @@ sudo apt-get -y install nginx-full
 sudo systemctl enable nginx
 sudo systemctl status nginx
 sudo mkdir -p /etc/nginx/tcpconf.d
+
 ```
 - next we will edit the main Nginx config file - use command
 ```bash
+
 sudo nano /etc/nginx/nginx.conf
 /// go the the very bottom of the file that opens up and add the following line:
+
 include /etc/nginx/tcpconf.d/*;
 /// this puts the tcp stream configuration file into the nginx server
+
 ```
 - NOW WE NEED TO CREATE THE CONFIGURATION
 - Set variables: these need to be the IP addresses of the upstream controller node(s) we will load balance our traffic to:
     * CONTROLLER0_IP=192.168.30.10
 ```bash
+
 /// now set the configuration file for the tcp stream (Im calling the save file kubernetes.conf, but yu can call it what you want, just ensure you replace the name in all the relevant location demonstrated in the example)
 cat << EOF | sudo tee /etc/nginx/tcpconf.d/kubernetes.conf
 stream {
@@ -169,6 +208,13 @@ EOF
 ```
 - Reload nginx so it can pickup the configuration
 ```bash
+// open up using sudo nano....
+sudo nano /etc/nginx/nginx.conf
+
+// at the very bottom of the file, last item, very bottom paste in....
+include /etc/nginx/tcpconf.d/*;
+
+// save and close, then reload nginx
 sudo nginx -s reload
 
 /// test the load balancer from your local machine:
