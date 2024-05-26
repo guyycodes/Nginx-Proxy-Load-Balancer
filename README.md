@@ -41,18 +41,23 @@ To get started with the NGINX proxy and load balancer configuration, follow thes
 
    // This setup rotates the log daily, keeps 14 days of logs, compresses old versions, and ensures proper permissions and ownership are maintained. It also sends the USR1 signal to NGINX to reopen log files after rotation.
     /var/log/nginx/proxy_access.log {
-        daily
-        missingok
-        rotate 14
-        compress
-        delaycompress
-        notifempty
-        create 640 www-data www-data
-        sharedscripts
-        postrotate
-            [ -f /var/run/nginx.pid ] && kill -USR1 `cat /var/run/nginx.pid`
-        endscript
+            daily                # Rotate the log daily
+            rotate 10            # Keep 10 days of backlogs
+            missingok            # It's okay if the log file is missing
+            notifempty           # Do not rotate the log if it is empty
+            compress             # Compress (gzip) log files on rotation
+            delaycompress        # Delay compression until the next rotation cycle
+            create 0640 www-data www-data # Create new log files with set permissions
+            sharedscripts
+            postrotate
+                if [ -f /var/run/nginx.pid ]; then
+                    kill -USR1 `cat /var/run/nginx.pid`
+                fi
+            endscript
     }
+
+   // test the cofiguration
+   sudo logrotate -d /etc/logrotate.d/proxy_access
 
    // create the file for your server configurations
    sudo touch /etc/nginx/sites-available/medium_proxy.conf
@@ -112,6 +117,10 @@ tail -f /var/log/nginx/proxy_access.log
 curl -i http://your-server-ip/medium-proxy/
 
 ```
+
+
+
+--- 
 # Nginx as a Load Balancer 
 1) ssh or log into the load balancer & install nginx
 - create a new directory (WE WIL USE A TCP STREAM - A FEATURE OF NGINX)
@@ -202,14 +211,11 @@ sudo chown www-data:www-data /var/log/nginx/stream_access.log
 sudo systemctl reload nginx
 sudo systemctl restart nginx
 
-// view dynamic logs 
-tail -f /var/log/nginx/stream_access.log
-
 // setup log rotation
 sudo nano /etc/logrotate.d/nginx_stream
 
 // then add this into /etc/logrotate.d/nginx_stream
-/var/log/nginx/stream_access.log {
+ /var/log/nginx/stream_access.log {
     daily                # Rotate the log daily
     rotate 10            # Keep 10 days of backlogs
     missingok            # It's okay if the log file is missing
@@ -224,6 +230,15 @@ sudo nano /etc/logrotate.d/nginx_stream
         fi
     endscript
 }
+
+    // enable permissions
+    sudo chown www-data:www-data /var/log/nginx/stream_access.log
+
+    // test the cofiguration
+    sudo logrotate -d /etc/logrotate.d/nginx_stream
+
+    // view dynamic logs 
+    tail -f /var/log/nginx/stream_access.log
 
 ```
 
