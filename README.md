@@ -114,6 +114,19 @@ server {
 // create a self signed certificate
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/testProxy.key -out /etc/ssl/certs/testProxy.crt
 
+---
+// for local development consider use mkcert to automte your certificates communicating to your load balancer
+brew install mkcert
+mkcert -install 
+mkcert localhost 127.0.0.1 ::1 <ip addr> <ip addr> <ip addr>
+Created a new certificate valid for the following names 📜
+ - "localhost"
+ - "127.0.0.1"
+ - "::1"
+ - <ip addr>
+ - <ip addr>
+ - <ip addr>
+---
 
 // then open up..
    sudo nano /etc/nginx/nginx.conf
