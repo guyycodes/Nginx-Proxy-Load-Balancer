@@ -30,7 +30,33 @@ To get started with the NGINX proxy and load balancer configuration, follow thes
 2. Create a configuration in /etc/nginx/sites-available/ directory:
 
 ```bash
+   // create a file for logging
+   sudo touch /var/log/nginx/proxy_access.log
+
+   // give it permissions
+   sudo chown www-data:www-data /var/log/nginx/proxy_access.log
+
+   // setup log rotation to keep it from growing forever
+   sudo nano /etc/logrotate.d/nginx_proxy
+
+   // This setup rotates the log daily, keeps 14 days of logs, compresses old versions, and ensures proper permissions and ownership are maintained. It also sends the USR1 signal to NGINX to reopen log files after rotation.
+    /var/log/nginx/proxy_access.log {
+        daily
+        missingok
+        rotate 14
+        compress
+        delaycompress
+        notifempty
+        create 640 www-data www-data
+        sharedscripts
+        postrotate
+            [ -f /var/run/nginx.pid ] && kill -USR1 `cat /var/run/nginx.pid`
+        endscript
+    }
+
+   // create the file for your server configurations
    sudo touch /etc/nginx/sites-available/medium_proxy.conf
+
    // then open and edit 
    sudo nano /etc/nginx/sites-available/medium_proxy.conf
 ```
@@ -40,6 +66,9 @@ To get started with the NGINX proxy and load balancer configuration, follow thes
 ```bash
 server {
     listen 80; # or any other port you prefer
+
+    # Specify the custom access log for this proxy
+    access_log /var/log/nginx/proxy_access.log;
 
     location /medium-proxy/ {
         if ($request_method = 'OPTIONS') {
@@ -61,6 +90,27 @@ server {
         add_header 'Access-Control-Allow-Origin' '*' always;  # Add CORS header for non-OPTIONS requests
     }
 }
+```
+4) Test the configuration: 
+```bash
+sudo nginx -t
+
+// if the test is succesfull, then create a symbolic link
+sudo ln -s /etc/nginx/sites-available/medium_proxy.conf /etc/nginx/sites-enabled/
+
+// test the symbolic link
+ls -l /etc/nginx/sites-enabled/
+
+// reload nginx and restart 
+sudo systemctl reload nginx
+sudo systemctl restart nginx
+
+// monitor the log file
+tail -f /var/log/nginx/proxy_access.log
+
+// test
+curl -i http://your-server-ip/medium-proxy/
+
 ```
 # Nginx as a Load Balancer 
 1) ssh or log into the load balancer & install nginx
@@ -142,7 +192,7 @@ stream {
 
 - Make the log file and allow it to be written to: 
 - update the ownership and permissions for the Nginx stream access log file
-```
+``` bash
 // create the log file
 sudo touch /var/log/nginx/stream_access.log
 
@@ -154,6 +204,26 @@ sudo systemctl restart nginx
 
 // view dynamic logs 
 tail -f /var/log/nginx/stream_access.log
+
+// setup log rotation
+sudo nano /etc/logrotate.d/nginx_stream
+
+// then add this into /etc/logrotate.d/nginx_stream
+/var/log/nginx/stream_access.log {
+    daily                # Rotate the log daily
+    rotate 10            # Keep 10 days of backlogs
+    missingok            # It's okay if the log file is missing
+    notifempty           # Do not rotate the log if it is empty
+    compress             # Compress (gzip) log files on rotation
+    delaycompress        # Delay compression until the next rotation cycle
+    create 0640 www-data www-data # Create new log files with set permissions
+    sharedscripts
+    postrotate
+        if [ -f /var/run/nginx.pid ]; then
+            kill -USR1 `cat /var/run/nginx.pid`
+        fi
+    endscript
+}
 
 ```
 
