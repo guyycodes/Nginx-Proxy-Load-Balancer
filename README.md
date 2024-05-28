@@ -137,6 +137,11 @@ server {
     }
 }
 
+// lets also disable server tokens
+ http {
+    server_tokens off;
+    ...
+}
 
 // create a self signed certificate
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/testProxy.key -out /etc/ssl/certs/testProxy.crt
