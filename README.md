@@ -82,8 +82,35 @@ server {
     ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5:!RC4';
     ssl_session_tickets off;  # Disable session tickets for improved security
 
-    location /medium-proxy/ {
-        proxy_pass https://medium.com/feed/@guyycodes;
+    location /<medium>/ {
+        if ($http_origin != '<restrict to only this request address>') {
+           return 403;  # Reject requests that are not from <allowed address>
+     }  
+     if ($request_method = 'OPTIONS') {
+           add_header 'Access-Control-Allow-Origin' '<allowed address>';
+           add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+           add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+           add_header 'Access-Control-Max-Age' 1728000;
+           add_header 'Content-Type' 'text/plain; charset=utf-8';
+           add_header 'Content-Length' 0;
+           return 204;
+    }
+    if ($http_origin = '<allowed address>') {
+           add_header 'Access-Control-Allow-Origin' '$http_origin';
+           add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+           add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+    }
+    if ($request_method = 'POST') {
+           add_header 'Access-Control-Allow-Origin' '<allowed address>';
+           add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+           add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+    }
+    if ($request_method = 'GET') {
+           add_header 'Access-Control-Allow-Origin' '<allowed address>';
+           add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+           add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+    }
+        proxy_pass https://medium.com/feed/<your medium id>>;
         proxy_set_header Host medium.com;
         proxy_set_header User-Agent $http_user_agent;  # Forward the User-Agent from the original request
         proxy_set_header Accept $http_accept;  # Forward the Accept header from the original request
@@ -115,7 +142,7 @@ server {
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/testProxy.key -out /etc/ssl/certs/testProxy.crt
 
 ---
-// for local development consider use mkcert to automte your certificates communicating to your load balancer
+// for local development consider use mkcert to automte your certificates communicating to your proxy
 brew install mkcert
 mkcert -install 
 mkcert localhost 127.0.0.1 ::1 <ip addr> <ip addr> <ip addr>
