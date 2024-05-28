@@ -138,6 +138,8 @@ server {
 }
 
 // lets also disable server tokens
+sudo nano /etc/nginx/nginx.conf
+
  http {
     server_tokens off;
     ...
